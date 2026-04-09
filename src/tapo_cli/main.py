@@ -28,14 +28,70 @@ DEFAULT_CONFIG = {
 }
 
 
+GUIDE = """\033[1;36m
+  ╔════════════════════════════════════════════════╗
+  ║            TAPO CLI — Getting Started          ║
+  ╚════════════════════════════════════════════════╝\033[0m
+
+  \033[1m1. Configure your cameras\033[0m
+
+     Edit \033[33m~/.config/tapo-cli/config.json\033[0m with your camera details:
+
+     {
+       "cameras": {
+         "living": {"ip": "192.168.1.100", "name": "Living Room"},
+         "door":   {"ip": "192.168.1.101", "name": "Front Door"}
+       },
+       "rtsp_user": "your_rtsp_user",
+       "rtsp_password": "your_rtsp_password",
+       "api_user": "admin",
+       "api_password": "your_tapo_cloud_password"
+     }
+
+     \033[2mYou can find camera IPs in your router's admin page or the Tapo app.\033[0m
+
+  \033[1m2. Requirements\033[0m
+
+     • ffmpeg (for live view & snapshots): \033[33mbrew install ffmpeg\033[0m
+     • A Kitty-compatible terminal (for the \033[33mview\033[0m command)
+
+  \033[1m3. Usage\033[0m
+
+     \033[33mtapo list\033[0m                     List configured cameras
+     \033[33mtapo status <cam>\033[0m             Show camera info
+     \033[33mtapo privacy <cam> on|off\033[0m     Cover/uncover lens
+     \033[33mtapo move <cam> <x> <y>\033[0m       Pan/tilt
+     \033[33mtapo view <cam>\033[0m               Live stream (Kitty terminal)
+     \033[33mtapo snap <cam>\033[0m               Terminal snapshot
+     \033[33mtapo led <cam> on|off\033[0m         Toggle indicator LED
+     \033[33mtapo alarm <cam> on|off\033[0m       Trigger/stop alarm
+     \033[33mtapo detection <cam> on|off\033[0m   Toggle motion detection
+     \033[33mtapo preset <cam> list|go\033[0m     Manage presets
+     \033[33mtapo reboot <cam>\033[0m             Reboot camera
+     \033[33mtapo config\033[0m                   Show config file path
+     \033[33mtapo guide\033[0m                    Show this guide
+
+  \033[1m4. Live View Controls\033[0m
+
+     \033[33mq\033[0m  Quit   \033[33m:\033[0m  Command mode   \033[33mTab\033[0m  Switch camera
+     \033[33mw/a/s/d\033[0m  Pan/tilt   \033[33mp\033[0m  Privacy   \033[33ml\033[0m  LED
+     \033[33m!\033[0m  Alarm   \033[33mm\033[0m  Motion detection
+"""
+
+
+def show_guide():
+    print(GUIDE)
+
+
 def load_config():
     if not os.path.exists(CONFIG_FILE):
         os.makedirs(CONFIG_DIR, exist_ok=True)
         with open(CONFIG_FILE, "w") as f:
             json.dump(DEFAULT_CONFIG, f, indent=2)
-        print(f"Created config file at {CONFIG_FILE}")
-        print("Please edit it with your camera details and credentials.")
-        sys.exit(1)
+        show_guide()
+        print(f"  \033[1;32mConfig file created at:\033[0m \033[33m{CONFIG_FILE}\033[0m")
+        print(f"  Edit it with your camera details, then run \033[33mtapo list\033[0m to verify.\n")
+        sys.exit(0)
     with open(CONFIG_FILE) as f:
         return json.load(f)
 
@@ -549,6 +605,10 @@ def cmd_list(args):
         print(f"  {key:10s}  {cam['ip']:18s}  {cam['name']}")
 
 
+def cmd_guide(args):
+    show_guide()
+
+
 def cmd_config(args):
     """Show config file location or open it."""
     print(f"Config file: {CONFIG_FILE}")
@@ -562,6 +622,10 @@ def main():
         description="Control Tapo cameras from the terminal",
     )
     sub = parser.add_subparsers(dest="command")
+
+    # guide
+    p = sub.add_parser("guide", help="Show setup guide")
+    p.set_defaults(func=cmd_guide)
 
     # config
     p = sub.add_parser("config", help="Show config file location")
