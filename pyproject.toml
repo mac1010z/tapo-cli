@@ -11,8 +11,10 @@ license = "MIT"
 requires-python = ">=3.9"
 dependencies = [
     "pytapo>=3.0.0",
-    "Pillow>=9.0.0",
 ]
+
+[project.optional-dependencies]
+snap = ["Pillow>=9.0.0"]
 
 [project.scripts]
 tapo = "tapo_cli.main:main"

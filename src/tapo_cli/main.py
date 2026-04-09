@@ -548,7 +548,11 @@ def cmd_view(args):
 
 
 def cmd_snap(args):
-    from PIL import Image
+    try:
+        from PIL import Image
+    except ImportError:
+        print("Pillow is required for snap. Install it: pip install Pillow")
+        sys.exit(1)
 
     c = cfg()
     cam = CAMERAS[args.camera]
