@@ -2,7 +2,6 @@
 """CLI tool to control Tapo cameras from the terminal."""
 
 import argparse
-import base64
 import io
 import json
 import os
@@ -10,7 +9,6 @@ import shutil
 import subprocess
 import sys
 import time
-import zlib
 
 from pytapo import Tapo
 
@@ -283,31 +281,18 @@ def cmd_view(args):
         status_msg = msg
         status_time = time.time()
 
-    def get_cell_size():
-        try:
-            import fcntl
-            import struct
-            buf = fcntl.ioctl(sys.stdout.fileno(), termios.TIOCGWINSZ, b'\x00' * 8)
-            rows, cols, xpix, ypix = struct.unpack('HHHH', buf)
-            if xpix > 0 and ypix > 0:
-                return xpix // cols, ypix // rows
-        except Exception:
-            pass
-        return 8, 16
+    def get_capture_size():
+        c, r = shutil.get_terminal_size()
+        return c, (r - 2) * 2  # 2 pixel rows per terminal row, minus status bar
 
-    def get_pixel_size():
-        cols, rows = shutil.get_terminal_size()
-        cw, ch = get_cell_size()
-        return cols * cw, (rows - 1) * ch, cols, rows
-
-    CAPTURE_W = 1280
-    CAPTURE_H = 720
+    CAPTURE_W, CAPTURE_H = get_capture_size()
 
     def start_ffmpeg(url):
-        nonlocal ffmpeg_proc
+        nonlocal ffmpeg_proc, CAPTURE_W, CAPTURE_H
         if ffmpeg_proc:
             ffmpeg_proc.kill()
             ffmpeg_proc.wait()
+        CAPTURE_W, CAPTURE_H = get_capture_size()
         ffmpeg_proc = subprocess.Popen(
             [
                 "ffmpeg",
@@ -316,7 +301,7 @@ def cmd_view(args):
                 "-f", "rawvideo",
                 "-pix_fmt", "rgb24",
                 "-s", f"{CAPTURE_W}x{CAPTURE_H}",
-                "-r", "15",
+                "-r", "10",
                 "-loglevel", "quiet",
                 "pipe:1",
             ],
@@ -331,12 +316,12 @@ def cmd_view(args):
 
     def frame_reader_thread():
         nonlocal latest_frame, ffmpeg_proc
-        frame_size = CAPTURE_W * CAPTURE_H * 3
         while reader_running:
             proc = ffmpeg_proc
             if proc is None or proc.poll() is not None:
                 time.sleep(0.1)
                 continue
+            frame_size = CAPTURE_W * CAPTURE_H * 3
             try:
                 data = proc.stdout.read(frame_size)
                 if data and len(data) == frame_size:
@@ -345,49 +330,30 @@ def cmd_view(args):
             except Exception:
                 time.sleep(0.1)
 
-    KITTY_CHUNK = 4096
-    frame_id_flip = 0
-
     def render_frame(raw):
-        nonlocal cols, rows, frame_id_flip
-        pixel_w, pixel_h, cols, rows = get_pixel_size()
-        frame_rows = rows - 1
+        nonlocal cols, rows
+        cols, rows = shutil.get_terminal_size()
+        w = CAPTURE_W
+        h = CAPTURE_H
 
-        frame_id_flip = 1 - frame_id_flip
-        cur_id = 2 + frame_id_flip
-        old_id = 2 + (1 - frame_id_flip)
+        buf = ["\033[H"]  # move to top-left
 
-        compressed = zlib.compress(raw, 1)
-        b64 = base64.standard_b64encode(compressed).decode('ascii')
+        for ty in range(h // 2):
+            top_y = ty * 2
+            bot_y = ty * 2 + 1
+            row = []
+            for x in range(w):
+                ti = (top_y * w + x) * 3
+                bi = (bot_y * w + x) * 3
+                tr, tg, tb = raw[ti], raw[ti+1], raw[ti+2]
+                if bot_y < h:
+                    br, bg, bb = raw[bi], raw[bi+1], raw[bi+2]
+                else:
+                    br, bg, bb = 0, 0, 0
+                row.append(f"\033[48;2;{tr};{tg};{tb};38;2;{br};{bg};{bb}m\u2584")
+            buf.append("".join(row) + "\033[0m")
 
-        buf = []
-
-        chunk = b64[:KITTY_CHUNK]
-        rest = b64[KITTY_CHUNK:]
-        more = 1 if rest else 0
-        header = f"a=t,f=24,s={CAPTURE_W},v={CAPTURE_H},o=z,i={cur_id},q=2,m={more}"
-        buf.append(f"\033_G{header};{chunk}\033\\")
-
-        while rest:
-            chunk = rest[:KITTY_CHUNK]
-            rest = rest[KITTY_CHUNK:]
-            more = 1 if rest else 0
-            buf.append(f"\033_Gm={more};{chunk}\033\\")
-
-        buf.append(f"\033[H\033_Ga=p,i={cur_id},p={cur_id},c={cols},r={frame_rows},q=2\033\\")
-        buf.append(f"\033_Ga=d,d=i,i={old_id},q=2\033\\")
-
-        cs_width = max(len(line) for line in CHEATSHEET) + 4
-        cs_height = len(CHEATSHEET) + 2
-        cs_start_row = frame_rows - cs_height
-        cs_start_col = cols - cs_width
-        if cs_start_row > 0 and cs_start_col > 0:
-            for i, line in enumerate(CHEATSHEET):
-                r = cs_start_row + 1 + i
-                buf.append(f"\033[{r};{cs_start_col}H\033[48;2;20;20;20;38;2;180;180;180m  {line:<{cs_width - 4}}  \033[0m")
-
-        buf.append(f"\033[{rows};1H")
-
+        # status bar
         if cmd_mode:
             prompt_text = f" :{cmd_input}_"
             right_text = f"{status_msg} "
@@ -400,7 +366,7 @@ def cmd_view(args):
             padding = max(0, cols - len(cam_label) - len(msg) - 1)
             buf.append(f"\033[48;2;40;40;40;38;2;0;255;200m{cam_label}\033[38;2;180;180;180m" + " " * padding + f"{msg} \033[0m")
 
-        sys.stdout.write("".join(buf))
+        sys.stdout.write("\n".join(buf))
         sys.stdout.flush()
 
     def execute_cmd(cmd_str):
@@ -541,7 +507,6 @@ def cmd_view(args):
             ffmpeg_proc.kill()
             ffmpeg_proc.wait()
         termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
-        sys.stdout.write("\033_Ga=d,d=i,i=2\033\\\033_Ga=d,d=i,i=3\033\\")
         sys.stdout.write("\033[?25h")
         sys.stdout.write("\033[2J\033[H")
         print("Stream stopped.")

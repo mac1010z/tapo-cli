@@ -1,11 +1,13 @@
 # tapo-cli
 
-Control Tapo cameras from the terminal. Live view with Kitty graphics protocol, pan/tilt, privacy mode, snapshots, and more.
+Control Tapo cameras from the terminal. Live view with half-block character rendering (works in any terminal), pan/tilt, privacy mode, snapshots, and more.
+
+> For HD rendering using the Kitty graphics protocol, see [tapokitty-cli](https://github.com/mac1010z/tapokitty-cli).
 
 ## Install
 
 ```bash
-brew install ifesal/tools/tapo-cli
+brew install mac1010z/tools/tapo-cli
 ```
 
 Or with pip:
