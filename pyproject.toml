@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tapo-cli"
+version = "1.0.0"
+description = "Control Tapo cameras from the terminal"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+dependencies = [
+    "pytapo>=3.0.0",
+    "Pillow>=9.0.0",
+]
+
+[project.scripts]
+tapo = "tapo_cli.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
